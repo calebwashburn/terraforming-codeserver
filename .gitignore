@@ -1,0 +1,4 @@
+credentials.yml
+.terraform
+terraform.tfvars
+terraform.tfstate*
