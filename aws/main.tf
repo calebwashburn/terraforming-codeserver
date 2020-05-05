@@ -10,6 +10,10 @@ provider "tls" {
    version = "~> 2.0"
 }
 
+provider "random" {
+  version = "~> 2.2.0"
+}
+
 terraform {
   required_version = "> 0.12.0"
 }
@@ -27,6 +31,11 @@ data "aws_ami" "latest-ubuntu" {
     name   = "virtualization-type"
     values = ["hvm"]
   }
+}
+
+resource "random_string" "code_server_password" {
+  length  = 16
+  special = false
 }
 
 resource "tls_private_key" "code_server" {
@@ -132,9 +141,13 @@ resource "aws_instance" "code_server" {
   vpc_security_group_ids = ["${aws_security_group.code_server_security_group.id}"]
   source_dest_check      = false
   subnet_id              = aws_subnet.subnet.id
-  private_ip             = var.private_ip
 
-  user_data = templatefile("${path.module}/init.tmpl", { port = 8080, ip_addrs = ["10.0.0.1", "10.0.0.2"]})
+  user_data = templatefile("${path.module}/init.tmpl", { 
+    host_name = "${var.env_name}-code-server.${var.hosted_zone}", 
+    go_version = "${var.go_version}",
+    codeserver_version = "${var.codeserver_version}",
+    codeserver_password = "${random_string.code_server_password.result}"
+  })
   
   root_block_device {
     volume_type = "gp2"
@@ -149,7 +162,6 @@ resource "aws_instance" "code_server" {
 resource "aws_eip" "code_server" {
   instance = aws_instance.code_server.id
   vpc      = true
-  associate_with_private_ip = var.private_ip
 
   depends_on = [aws_internet_gateway.gw]
 
