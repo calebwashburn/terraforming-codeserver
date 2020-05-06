@@ -41,4 +41,9 @@ variable "go_version" {
   default = "1.14.2"
 }
 
+variable "acme_server_url"         {
+  default = "https://acme-v02.api.letsencrypt.org/directory"
+}
+variable "acme_registration_email" {}
+
 

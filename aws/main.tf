@@ -14,6 +14,11 @@ provider "random" {
   version = "~> 2.2.0"
 }
 
+provider "acme" {
+  version = "~> 1.5"
+  server_url = var.acme_server_url
+}
+
 terraform {
   required_version = "> 0.12.0"
 }
@@ -30,6 +35,28 @@ data "aws_ami" "latest-ubuntu" {
   filter {
     name   = "virtualization-type"
     values = ["hvm"]
+  }
+}
+
+# Create an on the fly private key for the registration 
+# (not the certificate). Could simply be imported as well
+resource "tls_private_key" "acme_registration_private_key" {
+  algorithm = "RSA"
+}
+
+# Set up a registration using the registration private key
+resource "acme_registration" "reg" {
+  account_key_pem = tls_private_key.acme_registration_private_key.private_key_pem
+  email_address   = var.acme_registration_email
+}
+
+# Create a certificate
+resource "acme_certificate" "certificate" {
+  account_key_pem           = acme_registration.reg.account_key_pem
+  common_name               = "${var.env_name}-code-server.${var.hosted_zone}"
+  
+  dns_challenge {
+    provider = "route53"
   }
 }
 
@@ -142,11 +169,14 @@ resource "aws_instance" "code_server" {
   source_dest_check      = false
   subnet_id              = aws_subnet.subnet.id
 
+
   user_data = templatefile("${path.module}/init.tmpl", { 
     host_name = "${var.env_name}-code-server.${var.hosted_zone}", 
     go_version = "${var.go_version}",
     codeserver_version = "${var.codeserver_version}",
-    codeserver_password = "${random_string.code_server_password.result}"
+    codeserver_password = "${random_string.code_server_password.result}",
+    codeserver_privatekey = "${acme_certificate.certificate.private_key_pem}",
+    codeserver_certificate = "${acme_certificate.certificate.certificate_pem}"
   })
   
   root_block_device {
