@@ -21,8 +21,8 @@ brew install terraform
 First, you'll need to clone this repo. Then, need to perform the following steps:
 
 1. `cd aws`
-1. Create [`terraform.tfvars`](/README.md#var-file) file
-1. Populate [credentials](/README.md#credentials) file or env variables
+1. Create [`terraform.tfvars`](/aws/README.md#var-file) file
+1. Populate [credentials](/aws/README.md#credentials) file or env variables
 1. Run terraform apply:
   ```bash
   terraform init
