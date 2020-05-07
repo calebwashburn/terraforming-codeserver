@@ -1,10 +1,77 @@
 #!/bin/bash -e
 
+mkdir -p /var/www-code-server/html
+apt-get install nginx -y
+
+cat << EOF > /var/www-code-server/html/index.html
+<!DOCTYPE html>
+<html>
+<head>
+<title>Welcome to your code server instance</title>
+<style>
+    body {
+        width: 35em;
+        margin: 0 auto;
+        font-family: Tahoma, Verdana, Arial, sans-serif;
+    }
+</style>
+</head>
+<body>
+<h1>Welcome to your code server instance</h1>
+<p>If you see this page things are still being provisioned, please refresh.</p>
+</body>
+</html>
+EOF
+
+echo "${codeserver_privatekey}" > /var/www-code-server/key.pem
+echo "${codeserver_certificate}" > /var/www-code-server/cert.pem
+
+rm -rf /etc/nginx/sites-available/default
+cat << EOF > /etc/nginx/sites-available/default
+server {
+    listen 80 default_server;
+    server_name ${host_name};
+    return 301 https://\$host\$request_uri;
+}
+server {
+	# SSL configuration
+	listen 443 ssl default_server;
+	listen [::]:443 ssl default_server;
+    server_name _;	
+	ssl_certificate     /var/www-code-server/cert.pem;
+    ssl_certificate_key /var/www-code-server/key.pem;
+    # Improve HTTPS performance with session resumption
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    # Enable server-side protection against BEAST attacks
+    ssl_protocols TLSv1.2;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384";
+	root /var/www-code-server/html;
+	index index.html;
+
+	location / {
+		# First attempt to serve request as file, then
+		# as directory, then fall back to displaying a 404.
+		try_files \$uri \$uri/ =404;
+	}
+}
+EOF
+systemctl restart nginx
+
+apt-get update -y
+apt-get install build-essential apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y 
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+apt-get update -y
+apt-get install docker-ce docker-ce-cli containerd.io -y
+
 wget https://dl.google.com/go/go${go_version}.linux-amd64.tar.gz -O /tmp/golang.tgz
 tar -C /usr/local -xzf /tmp/golang.tgz
 rm -rf /tmp/golang.tgz
 
 adduser --shell /bin/bash --disabled-login --gecos codeserver codeserver
+usermod -aG docker codeserver
 
 cat << EOF > /home/codeserver/.bash_profile
 export GOPATH=\$HOME/go
@@ -13,7 +80,6 @@ EOF
 
 chmod +x /home/codeserver/.bash_profile
 chown codeserver:codeserver /home/codeserver/.bash_profile
-
 echo ". ~/.bash_profile" >> /home/codeserver/.bashrc
 
 mkdir -p /var/code-server
@@ -30,20 +96,14 @@ chmod +x /var/code-server/start.sh
 # start code server
 su codeserver -c /var/code-server/start.sh
 
-echo "${codeserver_privatekey}" > /var/code-server/key.pem
-echo "${codeserver_certificate}" > /var/code-server/cert.pem
-
-apt-get update -y
-apt-get install nginx build-essential -y
-
 cat << EOF > /etc/nginx/conf.d/codeserver.conf
 server {
     listen 443 ssl; 
 
     server_name ${host_name};
 
-    ssl_certificate     /var/code-server/cert.pem;
-    ssl_certificate_key /var/code-server/key.pem;
+    ssl_certificate     /var/www-code-server/cert.pem;
+    ssl_certificate_key /var/www-code-server/key.pem;
 
     # Improve HTTPS performance with session resumption
     ssl_session_cache shared:SSL:10m;
@@ -55,8 +115,6 @@ server {
     ssl_ciphers "ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384";
     
     location / {
-        
-        
         # prevents 502 bad gateway error
         proxy_buffers 8 32k;
         proxy_buffer_size 64k;
