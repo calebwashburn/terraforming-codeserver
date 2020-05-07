@@ -173,6 +173,7 @@ resource "aws_instance" "code_server" {
   user_data = templatefile("${path.module}/init.tmpl", { 
     host_name = "${var.env_name}-code-server.${var.hosted_zone}", 
     go_version = "${var.go_version}",
+    go_vscode_version = "${var.go_vscode_version}",
     codeserver_version = "${var.codeserver_version}",
     codeserver_password = "${random_string.code_server_password.result}",
     codeserver_privatekey = "${acme_certificate.certificate.private_key_pem}",

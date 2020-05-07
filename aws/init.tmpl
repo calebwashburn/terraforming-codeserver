@@ -18,7 +18,7 @@ cat << EOF > /var/www-code-server/html/index.html
 </head>
 <body>
 <h1>Welcome to your code server instance</h1>
-<p>If you see this page things are still being provisioned, please refresh.</p>
+<p>If you see this page things are still being provisioned, please refresh as generally takes about 5 minutes to deploy.</p>
 </body>
 </html>
 EOF
@@ -60,13 +60,14 @@ EOF
 systemctl restart nginx
 
 apt-get update -y
-apt-get install build-essential apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y 
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+apt-get install build-essential apt-transport-https ca-certificates curl gnupg-agent software-properties-common libarchive-tools xdg-utils -y 
+wget --tries=10 https://download.docker.com/linux/ubuntu/gpg -O /tmp/gpg
+cat /tmp/gpg | apt-key add -
 add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 apt-get update -y
 apt-get install docker-ce docker-ce-cli containerd.io -y
 
-wget https://dl.google.com/go/go${go_version}.linux-amd64.tar.gz -O /tmp/golang.tgz
+wget --tries=10 https://dl.google.com/go/go${go_version}.linux-amd64.tar.gz -O /tmp/golang.tgz
 tar -C /usr/local -xzf /tmp/golang.tgz
 rm -rf /tmp/golang.tgz
 
@@ -83,7 +84,7 @@ chown codeserver:codeserver /home/codeserver/.bash_profile
 echo ". ~/.bash_profile" >> /home/codeserver/.bashrc
 
 mkdir -p /var/code-server
-wget https://github.com/cdr/code-server/releases/download/${codeserver_version}/code-server-${codeserver_version}-linux-x86_64.tar.gz -O /tmp/code_server.tgz
+wget --tries=10 https://github.com/cdr/code-server/releases/download/${codeserver_version}/code-server-${codeserver_version}-linux-x86_64.tar.gz -O /tmp/code_server.tgz
 tar -C /var/code-server -xvf /tmp/code_server.tgz --strip-components=1
 chown codeserver:codeserver -R /var/code-server
 rm -rf /tmp/code_server.tgz
@@ -136,3 +137,43 @@ server {
 }
 EOF
 systemctl restart nginx
+
+mkdir -p /home/codeserver/.local/share/code-server/extensions
+chown codeserver:codeserver -R /home/codeserver/.local
+pushd /tmp
+    wget --tries=10 https://github.com/microsoft/vscode-go/releases/download/"${go_vscode_version}"/Go-"${go_vscode_version}".vsix -O go.vsix
+    bsdtar -xvf go.vsix
+    mv extension/ /home/codeserver/.local/share/code-server/extensions/Go-"${go_vscode_version}"
+    rm -rf go.vsix
+popd
+
+rm -rf /home/codeserver/.local/share/code-server/User/settings.json
+mkdir -p /home/codeserver/.local/share/code-server/User
+cat << EOF > /home/codeserver/.local/share/code-server/User/settings.json
+{
+    "go.useLanguageServer": true,
+    "[go]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true,
+        },
+        // Optional: Disable snippets, as they conflict with completion ranking.
+        "editor.snippetSuggestions": "none",
+    },
+    "[go.mod]": {
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports": true,
+        },
+    },
+    "gopls": {
+        // Add parameter placeholders when completing a function.
+        "usePlaceholders": true,
+        // If true, enable additional analyses with staticcheck.
+        // Warning: This will significantly increase memory usage.
+        "staticcheck": false,
+    },
+}
+EOF
+
+chown codeserver:codeserver -R /home/codeserver/.local
