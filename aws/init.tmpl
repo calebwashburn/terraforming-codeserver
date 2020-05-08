@@ -1,5 +1,16 @@
 #!/bin/bash -e
 
+function downloadFile {
+    while [ 1 ]; do
+        set +e
+        wget --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 0 --continue $1 -O $2
+        if [ $? = 0 ]; then break; 
+          set -e
+        fi; # check return value, break if successful (0)
+        sleep 1s;
+    done;
+}
+
 mkdir -p /var/www-code-server/html
 apt-get install nginx -y
 
@@ -23,14 +34,14 @@ cat << EOF > /var/www-code-server/html/index.html
 </html>
 EOF
 
-echo "${codeserver_privatekey}" > /var/www-code-server/key.pem
-echo "${codeserver_certificate}" > /var/www-code-server/cert.pem
+echo "${CODESERVER_PRIVATEKEY}" > /var/www-code-server/key.pem
+echo "${CODESERVER_CERTIFICATE}" > /var/www-code-server/cert.pem
 
 rm -rf /etc/nginx/sites-available/default
 cat << EOF > /etc/nginx/sites-available/default
 server {
     listen 80 default_server;
-    server_name ${host_name};
+    server_name ${HOST_NAME};
     return 301 https://\$host\$request_uri;
 }
 server {
@@ -60,14 +71,14 @@ EOF
 systemctl restart nginx
 
 apt-get update -y
-apt-get install build-essential apt-transport-https ca-certificates curl gnupg-agent software-properties-common libarchive-tools xdg-utils -y 
-wget --tries=10 https://download.docker.com/linux/ubuntu/gpg -O /tmp/gpg
+apt-get install build-essential apt-transport-https ca-certificates curl gnupg-agent software-properties-common libarchive-tools xdg-utils -y
+downloadFile https://download.docker.com/linux/ubuntu/gpg /tmp/gpg
 cat /tmp/gpg | apt-key add -
 add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
 apt-get update -y
 apt-get install docker-ce docker-ce-cli containerd.io -y
 
-wget --tries=10 https://dl.google.com/go/go${go_version}.linux-amd64.tar.gz -O /tmp/golang.tgz
+downloadFile https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz /tmp/golang.tgz
 tar -C /usr/local -xzf /tmp/golang.tgz
 rm -rf /tmp/golang.tgz
 
@@ -83,15 +94,27 @@ chmod +x /home/codeserver/.bash_profile
 chown codeserver:codeserver /home/codeserver/.bash_profile
 echo ". ~/.bash_profile" >> /home/codeserver/.bashrc
 
+#install kind
+downloadFile https://kind.sigs.k8s.io/dl/v0.8.0/kind-$(uname)-amd64 kind
+chmod +x kind 
+mv kind /usr/bin/kind
+
+#install kubectl
+downloadFile https://storage.googleapis.com/kubernetes-release/release/v1.18.2/bin/linux/amd64/kubectl kubectl
+chmod +x kubectl 
+mv kubectl /usr/bin/kubectl
+
+echo 'source <(kubectl completion bash)' >>/home/codeserver/.bashrc
+
 mkdir -p /var/code-server
-wget --tries=10 https://github.com/cdr/code-server/releases/download/${codeserver_version}/code-server-${codeserver_version}-linux-x86_64.tar.gz -O /tmp/code_server.tgz
+downloadFile https://github.com/cdr/code-server/releases/download/${CODESERVER_VERSION}/code-server-${CODESERVER_VERSION}-linux-x86_64.tar.gz /tmp/code_server.tgz
 tar -C /var/code-server -xvf /tmp/code_server.tgz --strip-components=1
 chown codeserver:codeserver -R /var/code-server
 rm -rf /tmp/code_server.tgz
 
 cat << EOF > /var/code-server/start.sh
 #!/bin/bash -e
-PASSWORD=${codeserver_password} nohup /var/code-server/code-server > /var/code-server/start.log 2>&1 &
+PASSWORD=${CODESERVER_PASSWORD} nohup /var/code-server/code-server > /var/code-server/start.log 2>&1 &
 EOF
 chmod +x /var/code-server/start.sh
 # start code server
@@ -101,7 +124,7 @@ cat << EOF > /etc/nginx/conf.d/codeserver.conf
 server {
     listen 443 ssl; 
 
-    server_name ${host_name};
+    server_name ${HOST_NAME};
 
     ssl_certificate     /var/www-code-server/cert.pem;
     ssl_certificate_key /var/www-code-server/key.pem;
@@ -141,9 +164,9 @@ systemctl restart nginx
 mkdir -p /home/codeserver/.local/share/code-server/extensions
 chown codeserver:codeserver -R /home/codeserver/.local
 pushd /tmp
-    wget --tries=10 https://github.com/microsoft/vscode-go/releases/download/"${go_vscode_version}"/Go-"${go_vscode_version}".vsix -O go.vsix
+    downloadFile https://github.com/microsoft/vscode-go/releases/download/"${GO_VSCODE_VERSION}"/Go-"${GO_VSCODE_VERSION}".vsix go.vsix
     bsdtar -xvf go.vsix
-    mv extension/ /home/codeserver/.local/share/code-server/extensions/Go-"${go_vscode_version}"
+    mv extension/ /home/codeserver/.local/share/code-server/extensions/Go-"${GO_VSCODE_VERSION}"
     rm -rf go.vsix
 popd
 

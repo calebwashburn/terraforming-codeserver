@@ -171,13 +171,13 @@ resource "aws_instance" "code_server" {
 
 
   user_data = templatefile("${path.module}/init.tmpl", { 
-    host_name = "${var.env_name}-code-server.${var.hosted_zone}", 
-    go_version = "${var.go_version}",
-    go_vscode_version = "${var.go_vscode_version}",
-    codeserver_version = "${var.codeserver_version}",
-    codeserver_password = "${random_string.code_server_password.result}",
-    codeserver_privatekey = "${acme_certificate.certificate.private_key_pem}",
-    codeserver_certificate = "${acme_certificate.certificate.certificate_pem}"
+    HOST_NAME = "${var.env_name}-code-server.${var.hosted_zone}", 
+    GO_VERSION = "${var.go_version}",
+    GO_VSCODE_VERSION = "${var.go_vscode_version}",
+    CODESERVER_VERSION = "${var.codeserver_version}",
+    CODESERVER_PASSWORD = "${random_string.code_server_password.result}",
+    CODESERVER_PRIVATEKEY = "${acme_certificate.certificate.private_key_pem}",
+    CODESERVER_CERTIFICATE = "${acme_certificate.certificate.certificate_pem}"
   })
   
   root_block_device {
